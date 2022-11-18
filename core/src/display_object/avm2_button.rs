@@ -241,7 +241,7 @@ impl<'gc> Avm2Button<'gc> {
                 // that `parent` is `null` (`DisplayObject::avm2_parent` checks that the parent is a container),
                 // and then properly set the parent to the state Sprite afterwards.
                 state_sprite.replace_at_depth(context, child, depth.into());
-                child.set_parent(context.gc_context, Some(self.into()));
+                child.set_parent(context.gc_context, Some(self.into())); //hmmmmm
                 child.post_instantiation(context, None, Instantiator::Movie, false);
                 catchup_display_object_to_frame(context, child);
                 child.set_parent(context.gc_context, Some(state_sprite.into()));
@@ -270,6 +270,7 @@ impl<'gc> Avm2Button<'gc> {
             state.set_parent(context.gc_context, None);
         }
         if let Some(state) = button.hit_area {
+            //removes hit_state's parent
             state.set_parent(context.gc_context, None);
         }
         if let Some(state) = self.get_state_child(state.into()) {
@@ -303,6 +304,7 @@ impl<'gc> Avm2Button<'gc> {
             swf::ButtonState::UP => self.0.write(context.gc_context).up_state = child,
             swf::ButtonState::OVER => self.0.write(context.gc_context).over_state = child,
             swf::ButtonState::DOWN => self.0.write(context.gc_context).down_state = child,
+            // this does not set parent at all
             swf::ButtonState::HIT_TEST => self.0.write(context.gc_context).hit_area = child,
             _ => (),
         }
@@ -494,6 +496,7 @@ impl<'gc> TDisplayObject<'gc> for Avm2Button<'gc> {
             write.up_state = Some(up_state);
             write.over_state = Some(over_state);
             write.down_state = Some(down_state);
+            // hit_area has a parent to either some sprite or to this
             write.hit_area = Some(hit_area);
             write.skip_current_frame = true;
             write.needs_frame_construction = false;
@@ -820,8 +823,18 @@ impl<'gc> TInteractiveObject<'gc> for Avm2Button<'gc> {
 
             let hit_area = self.0.read().hit_area;
             if let Some(hit_area) = hit_area {
-                // hit_area is not actually a child, so transform point into local space before passing it down.
-                let point = self.global_to_local(point);
+                let point = if let Some(parent) = hit_area.parent() {
+                    if parent.as_ptr() == self.as_ptr() {
+                        point
+                    } else {
+                        // hit_area is not actually a child, so transform point into local space before passing it down.
+                        self.global_to_local(point)
+                    }
+                } else {
+                    // hit_area is not actually a child, so transform point into local space before passing it down.
+                    self.global_to_local(point)
+                };
+
                 if hit_area.hit_test_shape(context, point, HitTestOptions::MOUSE_PICK) {
                     return Some((*self).into());
                 }
